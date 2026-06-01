@@ -1,0 +1,4 @@
+*/node_modules
+*/.env
+.personal.bash
+minikube-linux-amd64

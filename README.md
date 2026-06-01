@@ -237,3 +237,54 @@ The API annotations use `prometheus.io/scrape: "true"`,
 `prometheus.io/path: /health`, and `prometheus.io/port: "3000"`. They give a
 Prometheus-compatible discovery hint for the API availability endpoint while
 the application keeps the lightweight `/health` and `/ready` endpoints.
+
+## CI/CD
+
+GitHub Actions workflow:
+
+- `.github/workflows/ci-cd.yml`
+- workflow page: <https://github.com/mariazhadan/technologie_chmurowe/actions/workflows/ci-cd.yml>
+
+The workflow runs on `master`, `main`, pull requests, and manual
+`workflow_dispatch` runs. Pull requests run validation only. Pushes to
+`master` or `main` also build and push Docker images to GHCR and deploy the
+`prod` Kustomize overlay.
+
+The backend and frontend `package-lock.json` files must be committed because
+the workflow and Docker builds use `npm ci`.
+
+Pipeline steps:
+
+- install backend dependencies and run JavaScript syntax validation
+- install frontend dependencies, run `npm run lint`, and run `npm run build`
+- validate `k8s/base`, `k8s/overlays/dev`, and `k8s/overlays/prod` with Kustomize
+- build and push backend image to `ghcr.io/mariazhadan/technologie_chmurowe/api`
+- build and push frontend image to `ghcr.io/mariazhadan/technologie_chmurowe/frontend`
+- apply the rendered Kustomize manifests with the pushed image tags
+- check rollout status for API, frontend, MQTT, Keycloak, and PostgreSQL
+
+Required GitHub repository secret for deployment:
+
+- `KUBE_CONFIG_DATA` - base64 encoded kubeconfig for the target Kubernetes cluster
+
+Create it locally with:
+
+```bash
+cat ~/.kube/config | base64 -w0
+```
+
+Then add the value in GitHub: `Settings -> Secrets and variables -> Actions`.
+
+If GHCR images are private, either make the package public or add these
+optional repository secrets so the workflow can create a Kubernetes pull
+secret:
+
+- `GHCR_PULL_USERNAME` - GitHub username
+- `GHCR_PULL_TOKEN` - GitHub token with `read:packages`
+
+GitHub Actions must also have package write access enabled:
+`Settings -> Actions -> General -> Workflow permissions -> Read and write permissions`.
+
+If the target cluster is local minikube/kind on your laptop, GitHub-hosted
+runners will not be able to reach it. Use a self-hosted GitHub runner on the
+same machine/network, or deploy to a reachable Kubernetes cluster.
