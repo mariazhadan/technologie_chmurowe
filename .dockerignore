@@ -1,0 +1,7 @@
+.git
+*/node_modules
+backend/.env
+backend/logs
+frontend/dist
+*.log
+.personal.bash
