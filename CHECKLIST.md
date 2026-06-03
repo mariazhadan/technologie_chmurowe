@@ -140,7 +140,6 @@ spelnione
 Kontenery aplikacyjne działają jako non-root i mają podstawowy securityContext. Projekt używa initContainer albo Job do migracji bazy, inicjalizacji danych lub oczekiwania na zależności.
 8%
 ```
-
   Backend API:
   - plik: k8s/backend/deployment.yaml
   - pod securityContext: runAsNonRoot: true, runAsUser: 1000, runAsGroup: 1000,
@@ -151,14 +150,81 @@ Kontenery aplikacyjne działają jako non-root i mają podstawowy securityContex
     - wait-for-postgres - czeka aż PostgreSQL będzie gotowy
     - wait-for-keycloak - czeka aż Keycloak udostępni realm
     - wait-for-redis - czeka aż Redis odpowie PONG
+
+
+  Frontend:
+  - plik: k8s/frontend/deployment.yaml
+  - pod securityContext: runAsNonRoot: true, runAsUser: 101, runAsGroup: 101,
+  fsGroup: 101
+  - container securityContext: allowPrivilegeEscalation: false, capabilities drop
+  ALL
+
+  PostgreSQL:
+  - plik: k8s/postgres/statefulset.yaml
+  - pod securityContext: runAsNonRoot: true, runAsUser: 70, runAsGroup: 70,
+  fsGroup: 70
+  - container securityContext: allowPrivilegeEscalation: false, capabilities drop
+  ALL
+  - initContainer:
+    - prepare-postgres-data - tworzy katalog danych PostgreSQL i ustawia poprawne
+    uprawnienia na PVC
+
+  Redis:
+  - plik: k8s/redis/deployment.yaml
+  - pod securityContext: runAsNonRoot: true, runAsUser: 999, runAsGroup: 999,
+  fsGroup: 999
+  - container securityContext: allowPrivilegeEscalation: false,
+  readOnlyRootFilesystem: true, capabilities drop ALL
+
+
 ```
 
-8. CI/CD GitHub Actions
-Repozytorium zawiera workflow, który buduje obraz, uruchamia testy lub podstawową walidację, publikuje obraz do rejestru i wykonuje deploy przez kubectl, Helm albo Kustomize. Workflow sprawdza rollout po wdrożeniu.
+8.CI/CD GitHub Actions
+Repozytorium zawiera workflow, który buduje obraz, uruchamia testy lub podstawową walidację, publikuje obraz do rejestru i wykonuje deploy przez kubectl. Workflow sprawdza rollout po wdrożeniu.
 10%
 
+  Repozytorium zawiera workflow `.github/workflows/ci-cd.yml`, który uruchamia się
+  po pushu na branch `main` lub `master.
 
-Rzeczy dodatkowe spoza zajęć _BRAk_
+  Workflow składa się z kilku jobów:
+
+  1. `validate-app`
+     Uruchamia podstawową walidację aplikacji.
+     Backend sprawdzany jest przez `node --check` dla plików JS.
+     Frontend uruchamia `npm run lint` oraz `npm run build`.
+
+  2. `validate-k8s`
+     Sprawdza manifesty Kubernetes.
+     Workflow parsuje pliki `k8s/**/*.yaml` i weryfikuje, czy mają wymagane pola
+  `apiVersion`, `kind` oraz `metadata`.
+
+  3. `build-images`
+     Buduje obrazy Docker dla backendu i frontendu.
+     Obrazy są budowane przez `docker/build-push-action@v7`.
+     Workflow loguje się do GHCR przez `docker/login-action@v4` i publikuje obrazy do rejestru:
+     `ghcr.io/<repo>/api:<sha>` oraz `ghcr.io/<repo>/frontend:<sha>`.
+
+  4. `deploy-kind`
+     Uruchamia testowy klaster kind przez `helm/kind-action@v1`.
+     Pobiera obrazy z GHCR, ładuje je do klastra kind, a następnie wykonuje deploy
+  przez `kubectl apply`.
+     Manifesty są wdrażane z katalogów:
+     `k8s/postgres`, `k8s/keycloak`, `k8s/redis`, `k8s/backend`, `k8s/frontend`
+  oraz `k8s/ingress`.
+
+  Po wdrożeniu workflow sprawdza rollout:
+  - `statefulset/postgres`
+  - `deploy/keycloak`
+  - `deploy/redis`
+  - `deploy/api`
+  - `deploy/frontend`
+
+  Na końcu wykonuje smoke test:
+  `curl --fail http://localhost:3000/health`
+  po port-forwardzie do serwisu API.
+
+
+Rzeczy dodatkowe spoza zajęć `BRAK`
 Elementy nieomawiane bezpośrednio na zajęciach, ale przydatne przy konfiguracji lub wdrażaniu aplikacji. Suma wag: +10%.
 
 
@@ -183,8 +249,8 @@ Projekt zawiera dodatkowy komponent architektury: Redis cache.
 Dowod dzialania w Kubernetes:
 
 ```bash
-kubectl -n xpo-logistics get deploy/redis svc/redis
-kubectl -n xpo-logistics port-forward svc/api 3000:3000
+kubectl get deploy/redis svc/redis
+kubectl port-forward svc/api 3000:3000
 curl http://localhost:3000/api/cache-proof
 curl http://localhost:3000/api/cache-proof
 ```

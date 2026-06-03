@@ -3,11 +3,9 @@ on:
   push:
     branches: [main, master]
   workflow_dispatch:
-
 permissions:
   contents: read
   packages: write
-
 env:
   REGISTRY: ghcr.io
   NAMESPACE: xpo-logistics
@@ -39,7 +37,6 @@ jobs:
       - name: Run checks
         working-directory: ${{ matrix.workdir }}
         run: ${{ matrix.command }}
-
   validate-k8s:
     name: Validate Kubernetes
     runs-on: ubuntu-latest
@@ -63,10 +60,8 @@ jobs:
                   if missing:
                       print(f"{path}:{index}: missing {', '.join(sorted(missing))}")
                       failed = True
-
           sys.exit(1 if failed else 0)
           PY
-
   build-images:
     name: Build ${{ matrix.image }} image
     runs-on: ubuntu-latest
@@ -95,7 +90,6 @@ jobs:
           file: ${{ matrix.dockerfile }}
           push: true
           tags: ${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.image }}:${{ github.sha }}
-
   deploy-kind:
     name: Deploy to kind
     runs-on: ubuntu-latest
@@ -123,9 +117,12 @@ jobs:
       - name: Deploy manifests
         run: |
           kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
-          kubectl apply -f k8s/postgres -f k8s/keycloak -f k8s/redis -f k8s/backend -f k8s/frontend -f k8s/ingress/ingress.yaml
-          kubectl -n "$NAMESPACE" set image deployment/api api="$API_IMAGE"
-          kubectl -n "$NAMESPACE" set image deployment/frontend frontend="$FRONTEND_IMAGE"
+          kubectl -n "$NAMESPACE" create secret generic postgres-secret --from-literal=POSTGRES_PASSWORD=apppass --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n "$NAMESPACE" create secret generic backend-secret --from-literal=DATABASE_URL=postgres://appuser:apppass@postgres:5432/appdb --dry-run=client -o yaml | kubectl apply -f -
+          kubectl apply -f k8s/postgres/configmap.yaml -f k8s/postgres/pvc.yaml -f k8s/postgres/service.yaml -f k8s/postgres/statefulset.yaml -f k8s/keycloak -f k8s/redis -f k8s/ingress/ingress.yaml
+          kubectl apply -f k8s/backend/configmap.yaml -f k8s/backend/service.yaml -f k8s/backend/hpa.yaml -f k8s/frontend/service.yaml
+          kubectl set image --local -f k8s/backend/deployment.yaml api="$API_IMAGE" -o yaml | kubectl apply -f -
+          kubectl set image --local -f k8s/frontend/deployment.yaml frontend="$FRONTEND_IMAGE" -o yaml | kubectl apply -f -
       - name: Check rollout
         run: |
           kubectl -n "$NAMESPACE" rollout status statefulset/postgres --timeout=300s
