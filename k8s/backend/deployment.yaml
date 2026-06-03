@@ -6,6 +6,7 @@ metadata:
   labels:
     app.kubernetes.io/name: api
 spec:
+  revisionHistoryLimit: 1
   replicas: 2
   strategy:
     type: RollingUpdate

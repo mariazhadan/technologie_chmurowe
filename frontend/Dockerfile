@@ -17,14 +17,14 @@ RUN npm run build
 
 FROM nginx:1.27-alpine
 
-RUN addgroup -S app && adduser -S app -G app
+RUN sed -i '/^user /d' /etc/nginx/nginx.conf
 
-COPY --chown=app:app nginx/nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=build --chown=app:app /app/dist /usr/share/nginx/html
+COPY --chown=101:101 nginx/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build --chown=101:101 /app/dist /usr/share/nginx/html
 
-RUN chown -R app:app /etc/nginx/conf.d /usr/share/nginx/html /var/cache/nginx /var/run /var/log/nginx /run
+RUN chown -R 101:101 /etc/nginx/conf.d /usr/share/nginx/html /var/cache/nginx /var/run /var/log/nginx /run
 
-USER app
+USER 101:101
 
 EXPOSE 8080
 

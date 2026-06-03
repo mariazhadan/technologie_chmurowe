@@ -67,23 +67,19 @@ spec:
               value: /var/lib/postgresql/data/pgdata
           readinessProbe:
             exec:
-              command:
-                - pg_isready
-                - -U
-                - appuser
-                - -d
-                - appdb
+              command: 
+                - sh
+                - -c
+                - pg_isready -h 127.0.0.1 -p 5432 -U "$POSTGRES_USER" -d "$POSTGRES_DB"
             initialDelaySeconds: 10
             periodSeconds: 10
           livenessProbe:
             exec:
               command:
-                - pg_isready
-                - -U
-                - appuser
-                - -d
-                - appdb
-            initialDelaySeconds: 30
+                - sh
+                - -c
+                - pg_isready -h 127.0.0.1 -p 5432 -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+            initialDelaySeconds: 20
             periodSeconds: 20
           resources:
             requests:
@@ -102,7 +98,6 @@ spec:
               mountPath: /var/lib/postgresql/data
             - name: postgres-init
               mountPath: /docker-entrypoint-initdb.d/init.sql
-              subPath: init.sql
               readOnly: true
       volumes:
         - name: postgres-data

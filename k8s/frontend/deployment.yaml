@@ -6,6 +6,7 @@ metadata:
   labels:
     app.kubernetes.io/name: frontend
 spec:
+  revisionHistoryLimit: 1
   replicas: 2
   strategy:
     type: RollingUpdate
@@ -55,7 +56,6 @@ spec:
               memory: 128Mi
           securityContext:
             allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
             capabilities:
               drop:
                 - ALL
@@ -64,8 +64,12 @@ spec:
               mountPath: /var/cache/nginx
             - name: nginx-run
               mountPath: /run
+            - name: nginx-tmp
+              mountPath: /tmp
       volumes:
         - name: nginx-cache
           emptyDir: {}
         - name: nginx-run
+          emptyDir: {}
+        - name: nginx-tmp
           emptyDir: {}
