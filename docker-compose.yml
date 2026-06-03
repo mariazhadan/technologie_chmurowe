@@ -19,17 +19,17 @@ services:
     environment:
       PORT: 3000
       DATABASE_URL: postgres://appuser:apppass@db:5432/appdb
-      MQTT_URL: mqtt://mqtt:1883
       OAUTH_ISSUER_URL: http://localhost:8080/realms/xpo-logistics
       OAUTH_JWKS_URL: http://keycloak:8080/realms/xpo-logistics/protocol/openid-connect/certs
       OAUTH_CLIENT_ID: xpo-frontend
+      REDIS_URL: redis://redis:6379
     depends_on:
       db:
         condition: service_healthy
       keycloak:
         condition: service_started
-      mqtt:
-        condition: service_started
+      redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:3000/health >/dev/null 2>&1"]
       interval: 10s
@@ -71,12 +71,13 @@ services:
       - keycloak_data:/opt/keycloak/data
       - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
 
-  mqtt:
-    image: eclipse-mosquitto:2
-    ports:
-      - "1883:1883"
-    volumes:
-      - ./mqtt/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
 volumes:
   db_data:

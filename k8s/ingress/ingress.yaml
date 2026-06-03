@@ -2,11 +2,36 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: xpo-logistics
+  namespace: xpo-logistics
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
 spec:
+  ingressClassName: nginx
   rules:
-    - host: prod.xpo.local
+    - host: xpo.local
       http:
         paths:
+          - path: /realms
+            pathType: Prefix
+            backend:
+              service:
+                name: keycloak
+                port:
+                  number: 8080
+          - path: /resources
+            pathType: Prefix
+            backend:
+              service:
+                name: keycloak
+                port:
+                  number: 8080
+          - path: /admin
+            pathType: Prefix
+            backend:
+              service:
+                name: keycloak
+                port:
+                  number: 8080
           - path: /api
             pathType: Prefix
             backend:

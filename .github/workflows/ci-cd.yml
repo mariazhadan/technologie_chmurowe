@@ -1,14 +1,9 @@
-name: CI/CD
+name: CI
 
 on:
   push:
     branches:
       - master
-      - main
-  pull_request:
-    branches:
-      - master
-      - main
   workflow_dispatch:
 
 permissions:
@@ -17,13 +12,12 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  DEPLOY_OVERLAY: prod
-  DEPLOY_NAMESPACE: xpo-logistics-prod
+  DEPLOY_NAMESPACE: xpo-logistics
+  CLUSTER_NAME: test-cluster
 
 jobs:
-  validate:
-    name: Lint, Build, And Validate Manifests
-    runs-on: self-hosted
+  build-test-deploy:
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
@@ -38,53 +32,55 @@ jobs:
             backend/package-lock.json
             frontend/package-lock.json
 
-      - name: Install backend dependencies
+      - name: Validate backend
         working-directory: backend
-        run: npm ci
-
-      - name: Validate backend JavaScript syntax
-        working-directory: backend
-        run: find src -type f -name "*.js" -print0 | xargs -0 -n 1 node --check
-
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci
-
-      - name: Lint frontend
-        working-directory: frontend
-        run: npm run lint
-
-      - name: Build frontend
-        working-directory: frontend
-        run: npm run build
-
-      - name: Setup kubectl
-        uses: azure/setup-kubectl@v4
-        with:
-          version: latest
-
-      - name: Validate Kustomize manifests
         run: |
-          kubectl kustomize k8s/base >/dev/null
-          kubectl kustomize k8s/overlays/dev >/dev/null
-          kubectl kustomize k8s/overlays/prod >/dev/null
+          npm ci
+          find src -type f -name "*.js" -print0 | xargs -0 -n 1 node --check
 
-  build-and-push:
-    name: Build And Push Images
-    runs-on: self-hosted
-    needs: validate
-    if: github.event_name != 'pull_request'
+      - name: Validate frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run lint
+          npm run build
 
-    outputs:
-      api_image: ${{ steps.image-names.outputs.api_image }}
-      frontend_image: ${{ steps.image-names.outputs.frontend_image }}
+      - name: Validate Kubernetes YAML
+        run: |
+          python3 -m pip install pyyaml
+          python3 - <<'PY'
+          from pathlib import Path
+          import sys
+          import yaml
 
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+          required_keys = {"apiVersion", "kind", "metadata"}
+          has_error = False
 
-      - name: Setup Docker Buildx
-        uses: docker/setup-buildx-action@v3
+          for path in sorted(Path("k8s").glob("**/*.yaml")):
+              with path.open() as manifest:
+                  for index, document in enumerate(yaml.safe_load_all(manifest), start=1):
+                      if document is None:
+                          continue
+
+                      missing = required_keys - set(document)
+                      if missing:
+                          print(f"{path}:{index}: missing {', '.join(sorted(missing))}")
+                          has_error = True
+
+          if has_error:
+              sys.exit(1)
+          PY
+
+      - name: Prepare image names
+        id: images
+        run: |
+          image_prefix="${REGISTRY}/${GITHUB_REPOSITORY,,}"
+          api_image="${image_prefix}/api:${GITHUB_SHA}"
+          frontend_image="${image_prefix}/frontend:${GITHUB_SHA}"
+          echo "api=${api_image}" >> "$GITHUB_OUTPUT"
+          echo "frontend=${frontend_image}" >> "$GITHUB_OUTPUT"
+          echo "API_IMAGE=${api_image}" >> "$GITHUB_ENV"
+          echo "FRONTEND_IMAGE=${frontend_image}" >> "$GITHUB_ENV"
 
       - name: Login to GHCR
         uses: docker/login-action@v3
@@ -93,114 +89,57 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Prepare image names
-        id: image-names
-        run: |
-          image_prefix="${REGISTRY}/${GITHUB_REPOSITORY,,}"
-          echo "api_image=${image_prefix}/api" >> "$GITHUB_OUTPUT"
-          echo "frontend_image=${image_prefix}/frontend" >> "$GITHUB_OUTPUT"
-
-      - name: Build and push backend image
+      - name: Build and publish backend image
         uses: docker/build-push-action@v6
         with:
           context: ./backend
           file: ./backend/Dockerfile
           push: true
-          tags: |
-            ${{ steps.image-names.outputs.api_image }}:${{ github.sha }}
-            ${{ steps.image-names.outputs.api_image }}:latest
+          tags: ${{ steps.images.outputs.api }}
 
-      - name: Build and push frontend image
+      - name: Build and publish frontend image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./frontend/Dockerfile
           push: true
-          tags: |
-            ${{ steps.image-names.outputs.frontend_image }}:${{ github.sha }}
-            ${{ steps.image-names.outputs.frontend_image }}:latest
+          tags: ${{ steps.images.outputs.frontend }}
 
-  deploy:
-    name: Deploy With Kustomize
-    runs-on: self-hosted
-    needs: build-and-push
-    if: github.event_name != 'pull_request'
-    environment: production
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup kubectl
-        uses: azure/setup-kubectl@v4
+      - name: Start kind cluster
+        uses: helm/kind-action@v1
         with:
-          version: latest
+          cluster_name: ${{ env.CLUSTER_NAME }}
 
-      - name: Configure kubeconfig
-        env:
-          KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}
+      - name: Load images into kind
         run: |
-          if [ -z "${KUBE_CONFIG_DATA}" ]; then
-            echo "::error::KUBE_CONFIG_DATA secret is required for deployment."
-            exit 1
-          fi
+          docker pull "${API_IMAGE}"
+          docker pull "${FRONTEND_IMAGE}"
+          kind load docker-image "${API_IMAGE}" --name "${CLUSTER_NAME}"
+          kind load docker-image "${FRONTEND_IMAGE}" --name "${CLUSTER_NAME}"
 
-          mkdir -p "$HOME/.kube"
-          echo "$KUBE_CONFIG_DATA" | base64 -d > "$HOME/.kube/config"
-          chmod 600 "$HOME/.kube/config"
-          kubectl version --client
-
-      - name: Configure optional GHCR pull secret
-        env:
-          GHCR_PULL_USERNAME: ${{ secrets.GHCR_PULL_USERNAME }}
-          GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
+      - name: Deploy with kubectl
         run: |
-          if [ -z "${GHCR_PULL_TOKEN}" ]; then
-            echo "GHCR_PULL_TOKEN is not set; assuming the pushed images are public or the cluster already has pull credentials."
-            exit 0
-          fi
-
-          username="${GHCR_PULL_USERNAME:-${GITHUB_ACTOR}}"
-
           kubectl create namespace "${DEPLOY_NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
-          kubectl -n "${DEPLOY_NAMESPACE}" create secret docker-registry ghcr-pull-secret \
-            --docker-server="${REGISTRY}" \
-            --docker-username="${username}" \
-            --docker-password="${GHCR_PULL_TOKEN}" \
-            --dry-run=client -o yaml | kubectl apply -f -
-          kubectl -n "${DEPLOY_NAMESPACE}" patch serviceaccount default \
-            -p '{"imagePullSecrets":[{"name":"ghcr-pull-secret"}]}'
-
-      - name: Render and apply Kustomize manifests
-        env:
-          API_IMAGE: ${{ needs.build-and-push.outputs.api_image }}
-          FRONTEND_IMAGE: ${{ needs.build-and-push.outputs.frontend_image }}
-          IMAGE_TAG: ${{ github.sha }}
-        run: |
-          mkdir -p k8s/overlays/runtime
-          cat > k8s/overlays/runtime/kustomization.yaml <<EOF
-          apiVersion: kustomize.config.k8s.io/v1beta1
-          kind: Kustomization
-
-          resources:
-            - ../${DEPLOY_OVERLAY}
-
-          images:
-            - name: projekt-api
-              newName: ${API_IMAGE}
-              newTag: ${IMAGE_TAG}
-            - name: projekt-frontend
-              newName: ${FRONTEND_IMAGE}
-              newTag: ${IMAGE_TAG}
-          EOF
-
-          kubectl kustomize k8s/overlays/runtime >/dev/null
-          kubectl apply -k k8s/overlays/runtime
+          kubectl apply \
+            -f k8s/postgres \
+            -f k8s/keycloak \
+            -f k8s/redis \
+            -f k8s/backend \
+            -f k8s/frontend \
+            -f k8s/ingress/ingress.yaml
+          kubectl -n "${DEPLOY_NAMESPACE}" set image deployment/api api="${API_IMAGE}"
+          kubectl -n "${DEPLOY_NAMESPACE}" set image deployment/frontend frontend="${FRONTEND_IMAGE}"
 
       - name: Check rollout status
         run: |
+          kubectl -n "${DEPLOY_NAMESPACE}" rollout status statefulset/postgres --timeout=300s
+          kubectl -n "${DEPLOY_NAMESPACE}" rollout status deploy/keycloak --timeout=300s
+          kubectl -n "${DEPLOY_NAMESPACE}" rollout status deploy/redis --timeout=180s
           kubectl -n "${DEPLOY_NAMESPACE}" rollout status deploy/api --timeout=180s
           kubectl -n "${DEPLOY_NAMESPACE}" rollout status deploy/frontend --timeout=180s
-          kubectl -n "${DEPLOY_NAMESPACE}" rollout status deploy/mqtt --timeout=180s
-          kubectl -n "${DEPLOY_NAMESPACE}" rollout status deploy/keycloak --timeout=300s
-          kubectl -n "${DEPLOY_NAMESPACE}" rollout status statefulset/postgres --timeout=300s
+
+      - name: HTTP smoke test
+        run: |
+          kubectl -n "${DEPLOY_NAMESPACE}" port-forward service/api 3000:3000 &
+          sleep 5
+          curl --fail http://localhost:3000/health

@@ -3,7 +3,6 @@ const { body } = require('express-validator');
 const db = require('../db');
 const auth = require('../middleware/auth');
 const { requireRole } = require('../middleware/roles');
-const { publish } = require('../mqtt');
 const { appLog } = require('../appLog');
 const { validate } = require('../middleware/validate');
 const { accessPolicy, shipmentStatuses } = require('../apiPolicy');
@@ -64,13 +63,6 @@ router.post('/', validate(shipmentCreateRules), async (req, res) => {
     );
     const row = result.rows[0];
 
-    publish('shipments/created', {
-      id: row.id,
-      title: row.title,
-      destination: row.destination,
-      status: row.status,
-      createdAt: row.created_at,
-    });
     appLog('shipment_created', {
       id: row.id,
       title: row.title,
@@ -105,11 +97,6 @@ router.put('/:id', validate(shipmentUpdateRules), async (req, res) => {
     }
 
     const updatedAt = new Date().toISOString();
-    publish('shipments/updated', {
-      id: row.id,
-      status: row.status,
-      updatedAt,
-    });
     appLog('shipment_updated', {
       id: row.id,
       status: row.status,

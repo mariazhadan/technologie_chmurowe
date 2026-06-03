@@ -8,13 +8,14 @@ const cookieParser = require('cookie-parser');
 const db = require('./db');
 const { checkOAuthReady } = require('./oauth');
 const { ensureRuntimeSchema } = require('./runtime');
+const { pingRedis } = require('./redisClient');
 
 const authRoutes = require('./routes/auth');
 const warehousesRoutes = require('./routes/warehouses');
 const shipmentsRoutes = require('./routes/shipments');
 const vehiclesRoutes = require('./routes/vehicles');
 const usersRoutes = require('./routes/users');
-const eventsRoutes = require('./routes/events');
+const cacheProofRoutes = require('./routes/cacheProof');
 
 const logDir = path.join(__dirname, '..', 'logs');
 if (!fs.existsSync(logDir)) {
@@ -41,6 +42,7 @@ app.get('/ready', async (req, res) => {
   const checks = {
     database: false,
     oauth: false,
+    redis: false,
   };
 
   try {
@@ -48,6 +50,8 @@ app.get('/ready', async (req, res) => {
     checks.database = true;
     await checkOAuthReady();
     checks.oauth = true;
+    await pingRedis();
+    checks.redis = true;
 
     return res.json({
       status: 'ready',
@@ -66,7 +70,7 @@ app.use('/api/warehouses', warehousesRoutes);
 app.use('/api/shipments', shipmentsRoutes);
 app.use('/api/vehicles', vehiclesRoutes);
 app.use('/api/users', usersRoutes);
-app.use('/api/events', eventsRoutes);
+app.use('/api/cache-proof', cacheProofRoutes);
 
 const port = process.env.PORT || 3000;
 

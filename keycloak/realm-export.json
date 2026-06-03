@@ -26,16 +26,18 @@
       "directAccessGrantsEnabled": false,
       "implicitFlowEnabled": false,
       "redirectUris": [
+        "https://xpo.local/*",
         "http://localhost/*",
         "http://localhost:5173/*"
       ],
       "webOrigins": [
+        "https://xpo.local",
         "http://localhost",
         "http://localhost:5173"
       ],
       "attributes": {
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "http://localhost/*##http://localhost:5173/*"
+        "post.logout.redirect.uris": "https://xpo.local/*##http://localhost/*##http://localhost:5173/*"
       }
     }
   ],

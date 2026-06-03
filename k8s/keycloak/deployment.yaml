@@ -1,32 +1,8 @@
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: keycloak-data
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 1Gi
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: keycloak
-  labels:
-    app.kubernetes.io/name: keycloak
-spec:
-  ports:
-    - name: http
-      port: 8080
-      targetPort: 8080
-  selector:
-    app.kubernetes.io/name: keycloak
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: keycloak
+  namespace: xpo-logistics
   labels:
     app.kubernetes.io/name: keycloak
 spec:
@@ -55,7 +31,8 @@ spec:
           args:
             - start-dev
             - --import-realm
-            - --hostname=http://localhost:8080
+            - --hostname=https://xpo.local
+            - --proxy-headers=xforwarded
             - --hostname-strict=false
           ports:
             - name: http
@@ -64,12 +41,12 @@ spec:
             - name: KC_BOOTSTRAP_ADMIN_USERNAME
               valueFrom:
                 secretKeyRef:
-                  name: app-secret
+                  name: keycloak-secret
                   key: KC_BOOTSTRAP_ADMIN_USERNAME
             - name: KC_BOOTSTRAP_ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: app-secret
+                  name: keycloak-secret
                   key: KC_BOOTSTRAP_ADMIN_PASSWORD
           readinessProbe:
             httpGet:

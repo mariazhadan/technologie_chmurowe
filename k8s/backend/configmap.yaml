@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-config
+  namespace: xpo-logistics
+data:
+  PORT: "3000"
+  OAUTH_ISSUER_URL: https://xpo.local/realms/xpo-logistics
+  OAUTH_JWKS_URL: http://keycloak:8080/realms/xpo-logistics/protocol/openid-connect/certs
+  OAUTH_CLIENT_ID: xpo-frontend
+  REDIS_URL: redis://redis:6379

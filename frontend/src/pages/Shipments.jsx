@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { apiFetch, withApiBase } from '../api';
+import { apiFetch } from '../api';
 import Navbar from '../components/Navbar';
 
 const Shipments = () => {
@@ -25,42 +25,6 @@ const Shipments = () => {
   useEffect(() => {
     fetchItems();
   }, [fetchItems]);
-  useEffect(() => {
-    const es = new EventSource(withApiBase('/api/events/shipments'));
-
-    es.onopen = () => {
-      console.log('SSE Connected');
-    };
-
-    es.onerror = (err) => {
-      console.error('SSE Error', err);
-    };
-
-    const handleCreated = (e) => {
-      try {
-        const newItem = JSON.parse(e.data);
-        setItems(prev => [newItem, ...prev]);
-      } catch (err) {
-        console.error('SSE Parse Error', err);
-      }
-    };
-
-    const handleUpdated = (e) => {
-      try {
-        const updatedItem = JSON.parse(e.data);
-        setItems(prev => prev.map(item => item.id === updatedItem.id ? { ...item, ...updatedItem } : item));
-      } catch (err) {
-        console.error('SSE Parse Error', err);
-      }
-    };
-
-    es.addEventListener('shipment_created', handleCreated);
-    es.addEventListener('shipment_updated', handleUpdated);
-
-    return () => {
-      es.close();
-    };
-  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
