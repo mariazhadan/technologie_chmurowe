@@ -234,10 +234,38 @@ Wymagania specyficzne dla tego projektu
 Aplikacja ma jeden główny zasób biznesowy i obsługuje co najmniej dodanie danych, odczyt danych oraz endpoint /health lub /ready. Sprawdzenie: 2-3 komendy curl po wdrożeniu.
 10%
 
+Głównym zasobem biznesowym aplikacji są dostawy (`shipments`).
+Aplikacja umożliwia dodanie dostawy przez `POST /api/shipments`
+oraz odczyt danych przez `GET /api/shipments`.
+Backend udostępnia też endpointy zdrowia: `/health` oraz `/ready`.
+
+```
+  kubectl port-forward service/api 3000:3000
+```
+```
+  curl http://localhost:3000/health
+```
+```
+  curl -X POST http://localhost:3000/api/shipments \
+    -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"title":"Persistence
+  test","origin":"Gdynia","destination":"Warsaw","status":"CREATED"}'
+```
+
 
 Trwałość danych aplikacji
 10.Dane aplikacji są zapisywane w bazie danych działającej w Kubernetes i pozostają dostępne po restarcie poda bazy. Sprawdzenie: dodać rekord, usunąć pod bazy, odczytać rekord po odtworzeniu poda.
 5%
+
+Dane aplikacji są zapisywane w bazie PostgreSQL działającej w Kubernetes.
+PostgreSQL jest uruchomiony jako StatefulSet `postgres` i korzysta z PVC
+`postgres-data`.
+Dzięki temu dane pozostają dostępne po usunięciu i odtworzeniu poda bazy danych.
+
+```
+  kubectl delete pod postgres-0
+```
 
 
 Cache, kolejka albo worker
@@ -248,18 +276,14 @@ Projekt zawiera dodatkowy komponent architektury: Redis cache.
 
 Dowod dzialania w Kubernetes:
 
-```bash
-kubectl get deploy/redis svc/redis
-kubectl port-forward svc/api 3000:3000
-curl http://localhost:3000/api/cache-proof
-curl http://localhost:3000/api/cache-proof
 ```
+kubectl get deploy/redis svc/redis
+NAME                    READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/redis   1/1     1            1           7h2m
 
-Oczekiwany rezultat: w drugiej odpowiedzi pole `proof.hits` jest wieksze niz w pierwszej, np. `1`, potem `2`. To pokazuje, ze backend zapisuje i odczytuje licznik z Redis.
+NAME            TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)    AGE
+service/redis   ClusterIP   10.106.126.71   <none>        6379/TCP   7h2m
+```
 
 
 ## link do ostatniego udanego workflow GitHub Actions.
-
-
-
-

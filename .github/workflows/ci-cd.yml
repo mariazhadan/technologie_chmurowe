@@ -125,8 +125,8 @@ jobs:
           kubectl set image --local -f k8s/frontend/deployment.yaml frontend="$FRONTEND_IMAGE" -o yaml | kubectl apply -f -
       - name: Check rollout
         run: |
-          kubectl -n "$NAMESPACE" rollout status statefulset/postgres --timeout=300s
-          kubectl -n "$NAMESPACE" rollout status deploy/keycloak --timeout=300s
+          kubectl -n "$NAMESPACE" rollout status statefulset/postgres --timeout=180s
+          kubectl -n "$NAMESPACE" rollout status deploy/keycloak --timeout=180s
           kubectl -n "$NAMESPACE" rollout status deploy/redis --timeout=180s
           kubectl -n "$NAMESPACE" rollout status deploy/api --timeout=180s
           kubectl -n "$NAMESPACE" rollout status deploy/frontend --timeout=180s
