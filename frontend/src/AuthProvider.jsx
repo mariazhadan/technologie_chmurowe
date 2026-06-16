@@ -88,7 +88,7 @@ export const AuthProvider = ({ children }) => {
     const state = randomString();
     const verifier = randomString();
     const challenge = await createCodeChallenge(verifier);
-    const authUrl = new URL(`${oauthConfig.authority}/protocol/openid-connect/auth`);
+    const authUrl = new URL(oauthConfig.authorizationEndpoint);
 
     sessionStorage.setItem(STATE_KEY, state);
     sessionStorage.setItem(VERIFIER_KEY, verifier);
@@ -122,15 +122,13 @@ export const AuthProvider = ({ children }) => {
       throw new Error('Invalid OAuth callback');
     }
 
-    const tokenRes = await fetch(`${oauthConfig.authority}/protocol/openid-connect/token`, {
+    const tokenRes = await fetch(withApiBase(oauthConfig.tokenPath), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        client_id: oauthConfig.clientId,
-        grant_type: 'authorization_code',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
         code,
-        redirect_uri: oauthConfig.redirectUri,
-        code_verifier: verifier,
+        redirectUri: oauthConfig.redirectUri,
+        codeVerifier: verifier,
       }),
     });
 
@@ -156,14 +154,19 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
     clearStoredTokens();
 
-    const logoutUrl = new URL(`${oauthConfig.authority}/protocol/openid-connect/logout`);
-    logoutUrl.searchParams.set('client_id', oauthConfig.clientId);
-    logoutUrl.searchParams.set('post_logout_redirect_uri', `${window.location.origin}/login`);
-    if (idToken) {
-      logoutUrl.searchParams.set('id_token_hint', idToken);
+    if (oauthConfig.logoutEndpoint) {
+      const logoutUrl = new URL(oauthConfig.logoutEndpoint);
+      logoutUrl.searchParams.set('client_id', oauthConfig.clientId);
+      logoutUrl.searchParams.set('post_logout_redirect_uri', `${window.location.origin}/login`);
+      if (idToken) {
+        logoutUrl.searchParams.set('id_token_hint', idToken);
+      }
+
+      window.location.replace(logoutUrl.toString());
+      return;
     }
 
-    window.location.replace(logoutUrl.toString());
+    window.location.replace('/login');
   }, []);
 
   return (

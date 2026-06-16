@@ -1,7 +1,7 @@
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const db = require('./db');
-const { rolePriority } = require('./apiPolicy');
+const { rolePriority, roles: appRoles } = require('./apiPolicy');
 
 const jwksCache = {
   keys: [],
@@ -16,11 +16,40 @@ function getRequiredEnv(name) {
   return value;
 }
 
+function splitList(value) {
+  return (value || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function getBooleanEnv(name, defaultValue = false) {
+  const value = process.env[name];
+  if (value === undefined) {
+    return defaultValue;
+  }
+
+  return ['1', 'true', 'yes', 'on'].includes(value.toLowerCase());
+}
+
+function getDefaultRole() {
+  const role = process.env.OAUTH_DEFAULT_ROLE || appRoles.MODERATOR;
+  return rolePriority.includes(role) ? role : appRoles.MODERATOR;
+}
+
 function getOAuthConfig() {
+  const issuerUrl = getRequiredEnv('OAUTH_ISSUER_URL');
+  const allowedIssuers = splitList(process.env.OAUTH_ALLOWED_ISSUERS || issuerUrl);
+
   return {
-    issuerUrl: getRequiredEnv('OAUTH_ISSUER_URL'),
+    issuerUrl,
+    allowedIssuers,
     jwksUrl: getRequiredEnv('OAUTH_JWKS_URL'),
     clientId: process.env.OAUTH_CLIENT_ID || '',
+    clientSecret: process.env.OAUTH_CLIENT_SECRET || '',
+    tokenUrl: process.env.OAUTH_TOKEN_URL || 'https://oauth2.googleapis.com/token',
+    defaultRole: getDefaultRole(),
+    useIdTokenForApi: getBooleanEnv('OAUTH_USE_ID_TOKEN_FOR_API'),
   };
 }
 
@@ -84,12 +113,12 @@ async function getSigningKey(decodedHeader) {
 }
 
 function extractRoles(payload, clientId) {
-  const realmRoles = (payload.realm_access && payload.realm_access.roles) || [];
+  const providerRoles = (payload.roles && Array.isArray(payload.roles) ? payload.roles : []) || [];
   const resourceRoles =
     clientId && payload.resource_access && payload.resource_access[clientId]
       ? payload.resource_access[clientId].roles || []
       : [];
-  const roles = new Set([...realmRoles, ...resourceRoles]);
+  const roles = new Set([...providerRoles, ...resourceRoles]);
 
   return rolePriority.filter((role) => roles.has(role));
 }
@@ -104,22 +133,26 @@ async function verifyAccessToken(token) {
     throw new Error('Invalid token');
   }
 
-  const { issuerUrl, clientId } = getOAuthConfig();
+  const { allowedIssuers, clientId } = getOAuthConfig();
   const publicKey = await getSigningKey(decoded.header);
   const payload = jwt.verify(token, publicKey, {
     algorithms: ['RS256'],
-    issuer: issuerUrl,
+    issuer: allowedIssuers,
   });
 
   if (clientId && payload.azp && payload.azp !== clientId) {
     throw new Error('Invalid authorized party');
   }
 
+  if (clientId && !payload.azp) {
+    const audiences = Array.isArray(payload.aud) ? payload.aud : [payload.aud].filter(Boolean);
+    if (!audiences.includes(clientId)) {
+      throw new Error('Invalid audience');
+    }
+  }
+
   const roles = extractRoles(payload, clientId);
   const role = getPrimaryRole(roles);
-  if (!role) {
-    throw new Error('Token does not contain an application role');
-  }
 
   return {
     ...payload,
@@ -131,14 +164,18 @@ async function verifyAccessToken(token) {
 async function syncOAuthUser(payload) {
   const oauthSubject = payload.sub;
   const email = payload.email || payload.preferred_username;
-  const role = payload.appRole;
 
-  if (!oauthSubject || !email || !role) {
-    throw new Error('OAuth token is missing subject, email, or role');
+  if (!oauthSubject || !email) {
+    throw new Error('OAuth token is missing subject or email');
   }
 
+  if (payload.email_verified === false) {
+    throw new Error('OAuth token email is not verified');
+  }
+
+  const { defaultRole } = getOAuthConfig();
   const existing = await db.query(
-    `SELECT id
+    `SELECT id, role
        FROM users
       WHERE oauth_subject = $1 OR email = $2
       ORDER BY CASE WHEN oauth_subject = $1 THEN 0 ELSE 1 END
@@ -147,6 +184,7 @@ async function syncOAuthUser(payload) {
   );
 
   if (existing.rowCount > 0) {
+    const role = payload.appRole || existing.rows[0].role || defaultRole;
     const result = await db.query(
       `UPDATE users
           SET oauth_subject = $1,
@@ -159,6 +197,7 @@ async function syncOAuthUser(payload) {
     return result.rows[0];
   }
 
+  const role = payload.appRole || defaultRole;
   const result = await db.query(
     `INSERT INTO users (oauth_subject, email, role)
      VALUES ($1, $2, $3)
@@ -187,6 +226,41 @@ async function authenticateRequest(req) {
   };
 }
 
+async function exchangeAuthorizationCode({ code, codeVerifier, redirectUri }) {
+  if (!code || !codeVerifier || !redirectUri) {
+    throw new Error('code, codeVerifier, and redirectUri are required');
+  }
+
+  const { clientId, clientSecret, tokenUrl, useIdTokenForApi } = getOAuthConfig();
+  const body = new URLSearchParams({
+    client_id: clientId,
+    grant_type: 'authorization_code',
+    code,
+    redirect_uri: redirectUri,
+    code_verifier: codeVerifier,
+  });
+
+  if (clientSecret) {
+    body.set('client_secret', clientSecret);
+  }
+
+  const response = await fetch(tokenUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body,
+  });
+  const payload = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(payload.error_description || payload.error || 'OAuth token exchange failed');
+  }
+
+  return {
+    ...payload,
+    api_token: useIdTokenForApi && payload.id_token ? payload.id_token : payload.access_token,
+  };
+}
+
 async function checkOAuthReady() {
   await fetchJwks();
   return true;
@@ -194,5 +268,6 @@ async function checkOAuthReady() {
 
 module.exports = {
   authenticateRequest,
+  exchangeAuthorizationCode,
   checkOAuthReady,
 };

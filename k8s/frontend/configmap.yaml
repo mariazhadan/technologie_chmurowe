@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: frontend-config
+  namespace: xpo-logistics
+data:
+  PUBLIC_APP_URL: http://localhost
+  VITE_API_BASE: http://localhost
+  VITE_OAUTH_AUTHORIZATION_URL: https://accounts.google.com/o/oauth2/v2/auth
+  VITE_OAUTH_TOKEN_PATH: /api/auth/token
+  VITE_OAUTH_CLIENT_ID: 390638499964-7lbp0pmtschc2qub0502np8rsk3evfis.apps.googleusercontent.com
+  VITE_OAUTH_REDIRECT_URI: http://localhost/oauth/callback
+  VITE_GOOGLE_REDIRECT_URI: http://localhost/oauth/callback
+  VITE_OAUTH_SCOPE: openid email profile
+  VITE_OAUTH_LOGOUT_URL: ""

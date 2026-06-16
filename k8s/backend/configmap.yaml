@@ -5,7 +5,13 @@ metadata:
   namespace: xpo-logistics
 data:
   PORT: "3000"
-  OAUTH_ISSUER_URL: https://xpo.local/realms/xpo-logistics
-  OAUTH_JWKS_URL: http://keycloak:8080/realms/xpo-logistics/protocol/openid-connect/certs
-  OAUTH_CLIENT_ID: xpo-frontend
+  PUBLIC_APP_URL: http://localhost
+  CORS_ALLOWED_ORIGINS: http://localhost
+  OAUTH_ISSUER_URL: https://accounts.google.com
+  OAUTH_ALLOWED_ISSUERS: https://accounts.google.com,accounts.google.com
+  OAUTH_JWKS_URL: https://www.googleapis.com/oauth2/v3/certs
+  OAUTH_TOKEN_URL: https://oauth2.googleapis.com/token
+  OAUTH_CLIENT_ID: 390638499964-7lbp0pmtschc2qub0502np8rsk3evfis.apps.googleusercontent.com
+  OAUTH_DEFAULT_ROLE: moderator
+  OAUTH_USE_ID_TOKEN_FOR_API: "true"
   REDIS_URL: redis://redis:6379

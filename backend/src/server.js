@@ -17,18 +17,42 @@ const vehiclesRoutes = require('./routes/vehicles');
 const usersRoutes = require('./routes/users');
 const cacheProofRoutes = require('./routes/cacheProof');
 
-const logDir = path.join(__dirname, '..', 'logs');
-if (!fs.existsSync(logDir)) {
-  fs.mkdirSync(logDir, { recursive: true });
-}
-const accessLogStream = fs.createWriteStream(path.join(logDir, 'access.log'), { flags: 'a' });
+if (process.env.NODE_ENV !== 'test') {
+  const logDir = path.join(__dirname, '..', 'logs');
+  if (!fs.existsSync(logDir)) {
+    fs.mkdirSync(logDir, { recursive: true });
+  }
+  const accessLogStream = fs.createWriteStream(path.join(logDir, 'access.log'), { flags: 'a' });
 
-app.use(morgan('dev'));
-app.use(morgan('combined', { stream: accessLogStream }));
+  app.use(morgan('dev'));
+  app.use(morgan('combined', { stream: accessLogStream }));
+}
 app.use(cookieParser());
 app.use(express.json());
 app.set('etag', false);
 app.disable('view cache');
+
+const corsAllowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || 'http://localhost')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+app.use((req, res, next) => {
+  const origin = req.get('origin');
+  if (origin && corsAllowedOrigins.includes(origin)) {
+    res.set('Access-Control-Allow-Origin', origin);
+    res.set('Vary', 'Origin');
+  }
+
+  res.set('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+  res.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+
+  return next();
+});
 
 app.get('/health', (req, res) => {
   res.json({

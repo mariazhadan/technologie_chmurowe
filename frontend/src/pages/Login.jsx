@@ -16,7 +16,7 @@ const Login = () => {
       <h1>LOGIN</h1>
       <div className="card">
         <button type="button" onClick={handleLogin} style={{ width: '100%' }}>
-          Login with OAuth
+          Login with Google
         </button>
       </div>
     </div>

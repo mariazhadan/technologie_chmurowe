@@ -6,30 +6,9 @@ metadata:
 spec:
   ingressClassName: nginx
   rules:
-    - host: xpo.local
+    - host: localhost
       http:
         paths:
-          - path: /realms
-            pathType: Prefix
-            backend:
-              service:
-                name: keycloak
-                port:
-                  number: 8080
-          - path: /resources
-            pathType: Prefix
-            backend:
-              service:
-                name: keycloak
-                port:
-                  number: 8080
-          - path: /admin
-            pathType: Prefix
-            backend:
-              service:
-                name: keycloak
-                port:
-                  number: 8080
           - path: /api
             pathType: Prefix
             backend:

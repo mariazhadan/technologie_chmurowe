@@ -14,7 +14,7 @@ export const setStoredTokens = (tokens) => {
   sessionStorage.setItem(
     TOKEN_KEY,
     JSON.stringify({
-      accessToken: tokens.access_token,
+      accessToken: tokens.api_token || tokens.access_token || tokens.id_token,
       refreshToken: tokens.refresh_token,
       idToken: tokens.id_token,
       expiresAt: Date.now() + Math.max(expiresIn - 30, 30) * 1000,

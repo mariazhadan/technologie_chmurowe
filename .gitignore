@@ -3,3 +3,5 @@
 .personal.bash
 minikube-linux-amd64
 k8s/**/secret.yaml
+backend/logs/
+*.log
