@@ -138,7 +138,6 @@ spec:
                 secretKeyRef:
                   name: backend-secret
                   key: OAUTH_CLIENT_SECRET
-                  optional: true
             - name: REDIS_URL
               valueFrom:
                 configMapKeyRef:

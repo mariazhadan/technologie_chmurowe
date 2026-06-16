@@ -4,8 +4,8 @@ metadata:
   name: postgres-config
   namespace: xpo-logistics
 data:
-  POSTGRES_DB: appdb
-  POSTGRES_USER: appuser
+  POSTGRES_DB: rhgje
+  POSTGRES_USER: ajkern
   init.sql: |
     CREATE TABLE users (
         id SERIAL PRIMARY KEY,
